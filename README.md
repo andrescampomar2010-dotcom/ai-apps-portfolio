@@ -2,6 +2,8 @@
 
 **English** | [Español](#espanol)
 
+[![Demo](https://img.shields.io/badge/demo-live-2ea44f?style=flat-square)](https://andrescampomar2010-dotcom.github.io/ai-apps-portfolio/) [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb?style=flat-square)](LICENSE)
+
 Three single-file web apps I built with AI assistance. Each one is a self-contained `.html` file - no server, no install: open it in a browser and it works. All data inside is synthetic demo data.
 
 ## Live demos
