@@ -1,0 +1,3501 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Customs OCR Pro — Facturas & Packing Lists</title>
+
+<!--
+  CUSTOMS OCR PRO
+  ------------------------------------------------------------
+  Aplicación autónoma HTML.
+  - OCR: Tesseract.js
+  - PDF: PDF.js
+  - XLSX: SheetJS
+  ------------------------------------------------------------
+  Guarda este archivo como:
+      customs_ocr_pro.html
+
+  Para máxima privacidad, el OCR se ejecuta en el navegador.
+  Las librerías se cargan desde CDN. Una vez cargadas, el
+  procesamiento de los documentos se realiza localmente.
+-->
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+:root{
+  --bg:#eef2f7;
+  --panel:#ffffff;
+  --border:#d9e0e8;
+  --text:#17212b;
+  --muted:#667384;
+  --primary:#1769e0;
+  --primary-dark:#0f55bc;
+  --success:#14804a;
+  --danger:#c62828;
+  --danger-bg:#fff0f0;
+  --warning:#a66a00;
+  --warning-bg:#fff8e6;
+  --shadow:0 8px 28px rgba(20,35,55,.08);
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  font-family:Inter,Segoe UI,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+}
+
+header{
+  background:#101923;
+  color:white;
+  height:68px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:0 22px;
+  box-shadow:0 2px 10px rgba(0,0,0,.18);
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.logo{
+  width:40px;
+  height:40px;
+  border-radius:10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#1769e0;
+  font-size:21px;
+  font-weight:800;
+}
+
+.brand-title{
+  font-size:18px;
+  font-weight:800;
+}
+
+.brand-subtitle{
+  color:#aab7c5;
+  font-size:11px;
+  margin-top:2px;
+}
+
+.status{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:#b8c4d0;
+}
+
+.status-dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:#39b96b;
+}
+
+.toolbar{
+  background:#fff;
+  border-bottom:1px solid var(--border);
+  padding:12px 16px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+button,
+.file-button{
+  border:1px solid var(--border);
+  background:#fff;
+  color:#25313d;
+  padding:9px 13px;
+  border-radius:7px;
+  cursor:pointer;
+  font-size:13px;
+  font-weight:600;
+  transition:.15s;
+}
+
+button:hover,
+.file-button:hover{
+  border-color:#aab7c5;
+  background:#f7f9fb;
+}
+
+button.primary{
+  color:#fff;
+  background:var(--primary);
+  border-color:var(--primary);
+}
+
+button.primary:hover{
+  background:var(--primary-dark);
+}
+
+button.success{
+  color:#fff;
+  background:var(--success);
+  border-color:var(--success);
+}
+
+button.danger{
+  color:#fff;
+  background:var(--danger);
+  border-color:var(--danger);
+}
+
+button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+input[type=file]{display:none}
+
+.separator{
+  width:1px;
+  height:27px;
+  background:var(--border);
+  margin:0 3px;
+}
+
+.main{
+  height:calc(100vh - 122px);
+  min-height:600px;
+  display:grid;
+  grid-template-columns:minmax(380px,46%) minmax(500px,54%);
+  gap:12px;
+  padding:12px;
+}
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:10px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  min-height:0;
+}
+
+.panel-header{
+  height:50px;
+  padding:0 15px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  background:#fafbfd;
+}
+
+.panel-title{
+  font-size:14px;
+  font-weight:800;
+}
+
+.panel-info{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.viewer{
+  height:calc(100% - 50px);
+  overflow:auto;
+  background:#525b66;
+  padding:20px;
+  position:relative;
+}
+
+#documentContainer{
+  position:relative;
+  width:max-content;
+  margin:0 auto;
+}
+
+#documentCanvas{
+  display:block;
+  background:#fff;
+  box-shadow:0 3px 18px rgba(0,0,0,.3);
+  max-width:none;
+}
+
+#roiBox{
+  display:none;
+  position:absolute;
+  border:2px solid #1769e0;
+  background:rgba(23,105,224,.10);
+  pointer-events:none;
+}
+
+.viewer-placeholder{
+  color:#d9e0e8;
+  text-align:center;
+  padding:80px 20px;
+}
+
+.viewer-placeholder strong{
+  display:block;
+  font-size:16px;
+  margin-bottom:8px;
+}
+
+.right-content{
+  height:calc(100% - 50px);
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+
+.controls{
+  padding:10px 12px;
+  border-bottom:1px solid var(--border);
+  background:#fafbfd;
+}
+
+.controls-grid{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:7px;
+}
+
+.control-group label{
+  display:block;
+  font-size:10px;
+  color:var(--muted);
+  font-weight:700;
+  margin-bottom:3px;
+  text-transform:uppercase;
+}
+
+.control-group input,
+.control-group select{
+  width:100%;
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:7px;
+  font-size:12px;
+}
+
+.checkbox{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  font-size:12px;
+  height:32px;
+}
+
+.progress-area{
+  padding:8px 12px;
+  border-bottom:1px solid var(--border);
+  display:none;
+}
+
+.progress-text{
+  display:flex;
+  justify-content:space-between;
+  font-size:11px;
+  margin-bottom:5px;
+}
+
+.progress-bar{
+  height:6px;
+  background:#e6ebf0;
+  border-radius:10px;
+  overflow:hidden;
+}
+
+.progress-fill{
+  height:100%;
+  width:0;
+  background:var(--primary);
+  transition:width .2s;
+}
+
+.table-wrap{
+  overflow:auto;
+  flex:1;
+  min-height:0;
+}
+
+table{
+  border-collapse:collapse;
+  width:100%;
+  font-size:12px;
+}
+
+thead{
+  position:sticky;
+  top:0;
+  z-index:3;
+}
+
+th{
+  background:#edf2f7;
+  border-bottom:2px solid #cdd6df;
+  padding:9px 7px;
+  text-align:left;
+  white-space:nowrap;
+  font-size:10px;
+  color:#536170;
+  text-transform:uppercase;
+}
+
+td{
+  border-bottom:1px solid #e5e9ee;
+  padding:0;
+  vertical-align:middle;
+}
+
+td input{
+  border:0;
+  outline:none;
+  width:100%;
+  background:transparent;
+  padding:9px 7px;
+  font-family:inherit;
+  font-size:12px;
+}
+
+td input:focus{
+  background:#eef6ff;
+  box-shadow:inset 0 0 0 2px #1769e0;
+}
+
+td.number input{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+td.error{
+  background:var(--danger-bg);
+  color:#a01818;
+}
+
+td.warning{
+  background:var(--warning-bg);
+  color:#825400;
+}
+
+td.confidence{
+  text-align:center;
+  font-size:10px;
+  font-weight:700;
+}
+
+.row-actions{
+  white-space:nowrap;
+  text-align:center;
+}
+
+.row-actions button{
+  border:0;
+  padding:5px 7px;
+  font-size:11px;
+}
+
+tfoot td{
+  font-weight:800;
+  background:#f5f8fb;
+  border-top:2px solid #cbd4de;
+  padding:10px 7px;
+}
+
+.summary{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:8px;
+  padding:10px 12px;
+  border-top:1px solid var(--border);
+  background:#fafbfd;
+}
+
+.metric{
+  border:1px solid var(--border);
+  border-radius:7px;
+  padding:8px 10px;
+  background:white;
+}
+
+.metric-label{
+  font-size:9px;
+  color:var(--muted);
+  text-transform:uppercase;
+  font-weight:800;
+}
+
+.metric-value{
+  font-size:17px;
+  font-weight:800;
+  margin-top:3px;
+  font-variant-numeric:tabular-nums;
+}
+
+.metric-value.bad{
+  color:var(--danger);
+}
+
+.metric-value.good{
+  color:var(--success);
+}
+
+.log{
+  max-height:90px;
+  overflow:auto;
+  border-top:1px solid var(--border);
+  background:#111923;
+  color:#aebdca;
+  font-family:Consolas,monospace;
+  font-size:10px;
+  padding:7px 10px;
+}
+
+.log-line{
+  margin:2px 0;
+}
+
+.empty-row{
+  text-align:center;
+  color:var(--muted);
+  padding:40px!important;
+}
+
+.legend{
+  padding:5px 12px;
+  font-size:10px;
+  color:var(--muted);
+}
+
+.legend span{
+  display:inline-block;
+  margin-right:12px;
+}
+
+.legend i{
+  display:inline-block;
+  width:9px;
+  height:9px;
+  border-radius:2px;
+  margin-right:4px;
+  vertical-align:-1px;
+}
+
+.red{background:#ffc7c7}
+.yellow{background:#ffeab0}
+
+@media(max-width:1100px){
+  .main{
+    grid-template-columns:1fr;
+    height:auto;
+  }
+  .panel{
+    min-height:600px;
+  }
+  .controls-grid{
+    grid-template-columns:repeat(3,1fr);
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">C</div>
+    <div>
+      <div class="brand-title">Customs OCR Pro</div>
+      <div class="brand-subtitle">Facturas · Packing Lists · Desglose aduanero</div>
+    </div>
+  </div>
+
+  <div class="status">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Motor OCR preparado</span>
+  </div>
+</header>
+
+<div class="toolbar">
+
+  <label class="file-button primary">
+    📄 Cargar documento
+    <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf">
+  </label>
+
+  <button id="ocrButton" class="primary" disabled>⚡ Analizar OCR</button>
+
+  <button id="numericButton" disabled>🔢 Reanalizar números</button>
+
+  <div class="separator"></div>
+
+  <button id="groupButton" disabled>▦ Agrupar por Partida</button>
+  <button id="addButton">＋ Añadir partida</button>
+
+  <div class="separator"></div>
+
+  <button id="csvButton" disabled>CSV</button>
+  <button id="xlsxButton" disabled>Excel XLSX</button>
+
+  <div class="separator"></div>
+
+  <button id="clearButton">Limpiar</button>
+
+</div>
+
+<div class="main">
+
+  <!-- VISOR -->
+  <section class="panel">
+
+    <div class="panel-header">
+      <div class="panel-title">Documento</div>
+      <div class="panel-info" id="documentInfo">Sin documento</div>
+    </div>
+
+    <div class="viewer" id="viewer">
+
+      <div class="viewer-placeholder" id="placeholder">
+        <strong>Carga una factura o packing list</strong>
+        PNG · JPG · PDF
+        <br><br>
+        El documento se procesa localmente en este navegador.
+      </div>
+
+      <div id="documentContainer" style="display:none">
+        <canvas id="documentCanvas"></canvas>
+        <div id="roiBox"></div>
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- DATOS -->
+  <section class="panel">
+
+    <div class="panel-header">
+      <div class="panel-title">Partidas extraídas</div>
+      <div class="panel-info" id="rowCounter">0 partidas</div>
+    </div>
+
+    <div class="controls">
+
+      <div class="controls-grid">
+
+        <div class="control-group">
+          <label>ROI X %</label>
+          <input id="roiX" type="number" min="0" max="100" value="0">
+        </div>
+
+        <div class="control-group">
+          <label>ROI Y %</label>
+          <input id="roiY" type="number" min="0" max="100" value="0">
+        </div>
+
+        <div class="control-group">
+          <label>ROI Ancho %</label>
+          <input id="roiW" type="number" min="1" max="100" value="100">
+        </div>
+
+        <div class="control-group">
+          <label>ROI Alto %</label>
+          <input id="roiH" type="number" min="1" max="100" value="100">
+        </div>
+
+        <div class="control-group">
+          <label>Umbral peso KG</label>
+          <input id="maxWeight" type="number" min="1" value="5000">
+        </div>
+
+        <div class="control-group">
+          <label>Opciones</label>
+          <label class="checkbox">
+            <input id="useROI" type="checkbox">
+            Usar ROI numérica
+          </label>
+        </div>
+
+      </div>
+
+    </div>
+
+    <div class="progress-area" id="progressArea">
+      <div class="progress-text">
+        <span id="progressMessage">Procesando...</span>
+        <strong id="progressPercent">0%</strong>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><i class="red"></i> Revisar: valor anómalo / ambiguo</span>
+      <span><i class="yellow"></i> Confianza OCR baja</span>
+    </div>
+
+    <div class="table-wrap">
+
+      <table id="dataTable">
+
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Partida arancelaria</th>
+            <th>Descripción</th>
+            <th>Peso neto KG</th>
+            <th>Bultos</th>
+            <th>Conf.</th>
+            <th></th>
+          </tr>
+        </thead>
+
+        <tbody id="tableBody">
+
+          <tr id="emptyRow">
+            <td colspan="7" class="empty-row">
+              Todavía no hay datos extraídos.
+            </td>
+          </tr>
+
+        </tbody>
+
+        <tfoot>
+          <tr>
+            <td colspan="3">TOTAL</td>
+            <td id="footerWeight">0,00 KG</td>
+            <td id="footerPackages">0</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+
+      </table>
+
+    </div>
+
+    <div class="summary">
+
+      <div class="metric">
+        <div class="metric-label">Peso neto total</div>
+        <div class="metric-value" id="totalWeight">0,00 KG</div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-label">Bultos totales</div>
+        <div class="metric-value" id="totalPackages">0</div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-label">Estado validación</div>
+        <div class="metric-value good" id="validationStatus">OK</div>
+      </div>
+
+    </div>
+
+    <div class="log" id="log"></div>
+
+  </section>
+
+</div>
+
+<!-- CANVAS OCULTO DE PREPROCESAMIENTO -->
+<canvas id="processingCanvas" style="display:none"></canvas>
+
+<script>
+"use strict";
+
+/* ============================================================
+   ESTADO GLOBAL
+============================================================ */
+
+const state = {
+  file:null,
+  fileType:null,
+  image:null,
+  pdf:null,
+  pdfPage:1,
+  pdfPages:0,
+  rows:[],
+  words:[],
+  worker:null,
+  workerReady:false,
+  busy:false,
+  pageWidth:0,
+  pageHeight:0
+};
+
+
+/* ============================================================
+   REFERENCIAS DOM
+============================================================ */
+
+const $ = id => document.getElementById(id);
+
+const fileInput = $("fileInput");
+const ocrButton = $("ocrButton");
+const numericButton = $("numericButton");
+const groupButton = $("groupButton");
+const addButton = $("addButton");
+const csvButton = $("csvButton");
+const xlsxButton = $("xlsxButton");
+const clearButton = $("clearButton");
+
+const documentCanvas = $("documentCanvas");
+const processingCanvas = $("processingCanvas");
+
+const tableBody = $("tableBody");
+
+const roiX = $("roiX");
+const roiY = $("roiY");
+const roiW = $("roiW");
+const roiH = $("roiH");
+const useROI = $("useROI");
+
+const logBox = $("log");
+
+
+/* ============================================================
+   LOG
+============================================================ */
+
+function log(message){
+  const line = document.createElement("div");
+  line.className = "log-line";
+  line.textContent =
+    `[${new Date().toLocaleTimeString()}] ${message}`;
+
+  logBox.prepend(line);
+}
+
+
+/* ============================================================
+   STATUS
+============================================================ */
+
+function setStatus(text, busy=false){
+  $("statusText").textContent = text;
+  $("statusDot").style.background = busy ? "#f2b134" : "#39b96b";
+}
+
+
+/* ============================================================
+   PROGRESO
+============================================================ */
+
+function showProgress(show){
+  $("progressArea").style.display = show ? "block" : "none";
+}
+
+function progress(percent,message){
+  $("progressFill").style.width = `${Math.max(0,Math.min(100,percent))}%`;
+  $("progressPercent").textContent =
+    `${Math.round(percent)}%`;
+  $("progressMessage").textContent = message;
+}
+
+
+/* ============================================================
+   TESSERACT
+============================================================ */
+
+async function initOCR(){
+
+  if(state.worker) return;
+
+  try{
+
+    setStatus("Inicializando Tesseract...",true);
+
+    state.worker =
+      await Tesseract.createWorker(
+        "spa+eng",
+        1,
+        {
+          logger:m => {
+
+            if(m.status){
+
+              const p =
+                typeof m.progress === "number"
+                  ? m.progress * 100
+                  : 0;
+
+              progress(p,m.status);
+            }
+
+          }
+        }
+      );
+
+    await state.worker.setParameters({
+
+      preserve_interword_spaces:"1",
+
+      tessedit_pageseg_mode:
+        Tesseract.PSM.AUTO
+
+    });
+
+    state.workerReady = true;
+
+    setStatus("Motor OCR preparado");
+    log("Tesseract.js preparado.");
+
+  }catch(error){
+
+    console.error(error);
+
+    setStatus("Error OCR");
+
+    log("ERROR iniciando Tesseract: " + error.message);
+
+    alert(
+      "No se pudo iniciar Tesseract.js.\n\n" +
+      "Comprueba que el navegador tenga acceso a la CDN."
+    );
+  }
+}
+
+
+/* ============================================================
+   CARGA DE ARCHIVOS
+============================================================ */
+
+fileInput.addEventListener("change",async e=>{
+
+  const file = e.target.files[0];
+
+  if(!file) return;
+
+  await loadFile(file);
+
+});
+
+
+async function loadFile(file){
+
+  state.file = file;
+
+  state.rows = [];
+  state.words = [];
+
+  renderTable();
+
+  $("documentInfo").textContent =
+    `${file.name} · ${formatBytes(file.size)}`;
+
+  log(`Documento cargado: ${file.name}`);
+
+  if(file.type === "application/pdf" ||
+     file.name.toLowerCase().endsWith(".pdf")){
+
+    state.fileType = "pdf";
+
+    await loadPDF(file);
+
+  }else{
+
+    state.fileType = "image";
+
+    await loadImage(file);
+
+  }
+
+  ocrButton.disabled = false;
+  numericButton.disabled = false;
+
+}
+
+
+/* ============================================================
+   IMAGEN
+============================================================ */
+
+async function loadImage(file){
+
+  const url = URL.createObjectURL(file);
+
+  try{
+
+    const img = new Image();
+
+    await new Promise((resolve,reject)=>{
+
+      img.onload = resolve;
+      img.onerror = reject;
+
+      img.src = url;
+
+    });
+
+    state.image = img;
+
+    state.pageWidth = img.naturalWidth;
+    state.pageHeight = img.naturalHeight;
+
+    drawDocument(img);
+
+    log(
+      `Imagen: ${img.naturalWidth} × ${img.naturalHeight}px`
+    );
+
+  }finally{
+
+    URL.revokeObjectURL(url);
+
+  }
+}
+
+
+/* ============================================================
+   PDF
+============================================================ */
+
+async function loadPDF(file){
+
+  /*
+    PDF.js se carga como módulo.
+    En navegadores compatibles se accede a window.pdfjsLib
+    si el módulo ya está disponible.
+  */
+
+  if(!window.pdfjsLib){
+
+    try{
+
+      const pdfjs =
+        await import(
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs"
+        );
+
+      window.pdfjsLib = pdfjs;
+
+      pdfjs.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs";
+
+    }catch(e){
+
+      alert(
+        "No se pudo cargar PDF.js.\n" +
+        "Comprueba la conexión a Internet."
+      );
+
+      throw e;
+    }
+
+  }
+
+  const buffer = await file.arrayBuffer();
+
+  state.pdf =
+    await window.pdfjsLib.getDocument({
+      data:buffer
+    }).promise;
+
+  state.pdfPages = state.pdf.numPages;
+
+  state.pdfPage = 1;
+
+  await renderPDFPage(1);
+
+  log(`PDF cargado: ${state.pdfPages} página(s).`);
+}
+
+
+async function renderPDFPage(pageNumber){
+
+  const page =
+    await state.pdf.getPage(pageNumber);
+
+  const viewport =
+    page.getViewport({scale:2.2});
+
+  documentCanvas.width =
+    Math.floor(viewport.width);
+
+  documentCanvas.height =
+    Math.floor(viewport.height);
+
+  const ctx =
+    documentCanvas.getContext("2d");
+
+  await page.render({
+    canvasContext:ctx,
+    viewport
+  }).promise;
+
+  state.pageWidth =
+    documentCanvas.width;
+
+  state.pageHeight =
+    documentCanvas.height;
+
+  showDocumentCanvas();
+
+  $("documentInfo").textContent =
+    `${state.file.name} · página ${pageNumber}/${state.pdfPages}`;
+
+}
+
+
+/* ============================================================
+   VISOR
+============================================================ */
+
+function showDocumentCanvas(){
+
+  $("placeholder").style.display = "none";
+
+  $("documentContainer").style.display = "block";
+
+  const viewer =
+    $("viewer");
+
+  /*
+    No ampliamos el canvas físicamente.
+    CSS permite scroll para documentos grandes.
+  */
+
+  updateROIOverlay();
+}
+
+
+function drawDocument(img){
+
+  documentCanvas.width = img.naturalWidth;
+  documentCanvas.height = img.naturalHeight;
+
+  const ctx =
+    documentCanvas.getContext("2d");
+
+  ctx.clearRect(
+    0,
+    0,
+    documentCanvas.width,
+    documentCanvas.height
+  );
+
+  ctx.drawImage(
+    img,
+    0,
+    0
+  );
+
+  showDocumentCanvas();
+}
+
+
+/* ============================================================
+   ROI
+============================================================ */
+
+[
+  roiX,
+  roiY,
+  roiW,
+  roiH,
+  useROI
+].forEach(el=>{
+  el.addEventListener("input",updateROIOverlay);
+  el.addEventListener("change",updateROIOverlay);
+});
+
+
+function updateROIOverlay(){
+
+  if(!$("documentContainer").style.display ||
+     $("documentContainer").style.display === "none"){
+
+    return;
+  }
+
+  const box = $("roiBox");
+
+  if(!useROI.checked){
+
+    box.style.display = "none";
+    return;
+
+  }
+
+  box.style.display = "block";
+
+  box.style.left = `${clamp(roiX.value,0,100)}%`;
+  box.style.top = `${clamp(roiY.value,0,100)}%`;
+  box.style.width = `${clamp(roiW.value,1,100)}%`;
+  box.style.height = `${clamp(roiH.value,1,100)}%`;
+
+}
+
+
+/* ============================================================
+   PREPROCESAMIENTO
+============================================================ */
+
+function preprocessCanvas(){
+
+  const source = documentCanvas;
+
+  const w = source.width;
+  const h = source.height;
+
+  processingCanvas.width = w;
+  processingCanvas.height = h;
+
+  const ctx =
+    processingCanvas.getContext("2d",{
+      willReadFrequently:true
+    });
+
+  ctx.drawImage(source,0,0);
+
+  const imageData =
+    ctx.getImageData(0,0,w,h);
+
+  const data = imageData.data;
+
+  /*
+    Mejora local sencilla:
+    - escala de grises ponderada
+    - contraste
+    - threshold adaptado
+  */
+
+  for(let i=0;i<data.length;i+=4){
+
+    const r=data[i];
+    const g=data[i+1];
+    const b=data[i+2];
+
+    let gray =
+      0.299*r +
+      0.587*g +
+      0.114*b;
+
+    /*
+      Contraste.
+      128 = punto medio.
+    */
+
+    gray =
+      ((gray-128)*1.45)+128;
+
+    gray =
+      Math.max(0,Math.min(255,gray));
+
+    /*
+      Binarización conservadora.
+      Mantiene números pequeños mejor que un threshold
+      extremadamente agresivo.
+    */
+
+    const threshold =
+      gray > 170 ? 255 : 0;
+
+    data[i] = threshold;
+    data[i+1] = threshold;
+    data[i+2] = threshold;
+
+  }
+
+  ctx.putImageData(imageData,0,0);
+
+  return processingCanvas;
+}
+
+
+/* ============================================================
+   ROI REAL EN CANVAS
+============================================================ */
+
+function getROICanvas(){
+
+  const source =
+    preprocessCanvas();
+
+  if(!useROI.checked){
+
+    return source;
+  }
+
+  const x =
+    Math.round(
+      source.width *
+      clamp(roiX.value,0,100)/100
+    );
+
+  const y =
+    Math.round(
+      source.height *
+      clamp(roiY.value,0,100)/100
+    );
+
+  const w =
+    Math.round(
+      source.width *
+      clamp(roiW.value,1,100)/100
+    );
+
+  const h =
+    Math.round(
+      source.height *
+      clamp(roiH.value,1,100)/100
+    );
+
+  const roiCanvas =
+    document.createElement("canvas");
+
+  roiCanvas.width =
+    Math.max(1,Math.min(w,source.width-x));
+
+  roiCanvas.height =
+    Math.max(1,Math.min(h,source.height-y));
+
+  const ctx =
+    roiCanvas.getContext("2d");
+
+  ctx.drawImage(
+    source,
+    x,y,
+    roiCanvas.width,
+    roiCanvas.height,
+    0,0,
+    roiCanvas.width,
+    roiCanvas.height
+  );
+
+  return roiCanvas;
+}
+
+
+/* ============================================================
+   OCR PRINCIPAL
+============================================================ */
+
+ocrButton.addEventListener("click",()=>{
+  runOCR(false);
+});
+
+
+numericButton.addEventListener("click",()=>{
+  runOCR(true);
+});
+
+
+async function runOCR(numericOnly=false){
+
+  if(state.busy) return;
+
+  if(!state.file){
+
+    alert("Carga primero una factura o packing list.");
+    return;
+  }
+
+  state.busy = true;
+
+  ocrButton.disabled = true;
+  numericButton.disabled = true;
+
+  showProgress(true);
+  progress(0,"Preparando imagen...");
+
+  try{
+
+    await initOCR();
+
+    /*
+      Si es PDF multipágina, analizamos página por página.
+      Esto evita tener que cargar todo el PDF simultáneamente.
+    */
+
+    if(state.fileType === "pdf"){
+
+      state.rows = [];
+
+      for(
+        let page=1;
+        page<=state.pdfPages;
+        page++
+      ){
+
+        progress(
+          ((page-1)/state.pdfPages)*100,
+          `Preparando página ${page}/${state.pdfPages}...`
+        );
+
+        await renderPDFPage(page);
+
+        await processCurrentPage(
+          numericOnly,
+          page
+        );
+      }
+
+    }else{
+
+      await processCurrentPage(
+        numericOnly,
+        1
+      );
+
+    }
+
+    /*
+      Ordenar por partida antes de mostrar.
+    */
+
+    state.rows.sort(
+      (a,b)=>
+        String(a.tariff).localeCompare(
+          String(b.tariff),
+          "es"
+        )
+    );
+
+    renderTable();
+
+    log(
+      `OCR finalizado. ${state.rows.length} partidas detectadas.`
+    );
+
+    progress(100,"OCR terminado.");
+
+  }catch(error){
+
+    console.error(error);
+
+    log("ERROR: "+error.message);
+
+    alert(
+      "Se produjo un error durante el OCR.\n\n"+
+      error.message
+    );
+
+  }finally{
+
+    state.busy = false;
+
+    ocrButton.disabled = false;
+    numericButton.disabled = false;
+
+    setTimeout(
+      ()=>showProgress(false),
+      800
+    );
+
+  }
+}
+
+
+/* ============================================================
+   PROCESAMIENTO DE PÁGINA
+============================================================ */
+
+async function processCurrentPage(
+  numericOnly,
+  pageNumber
+){
+
+  const canvas =
+    getROICanvas();
+
+  progress(
+    10,
+    numericOnly
+      ? "OCR numérico de alta precisión..."
+      : `OCR de página ${pageNumber}...`
+  );
+
+  /*
+    OCR numérico:
+    whitelist estricta.
+  */
+
+  if(numericOnly){
+
+    await runNumericOCR(canvas);
+
+    return;
+  }
+
+  /*
+    OCR general.
+  */
+
+  await state.worker.setParameters({
+
+    tessedit_char_whitelist:
+      "",
+
+    tessedit_pageseg_mode:
+      Tesseract.PSM.AUTO,
+
+    preserve_interword_spaces:"1"
+
+  });
+
+  const result =
+    await state.worker.recognize(canvas);
+
+  state.words =
+    result.data.words || [];
+
+  progress(
+    75,
+    "Interpretando columnas y números..."
+  );
+
+  const extracted =
+    parseOCRWords(
+      state.words,
+      result.data.text || "",
+      pageNumber
+    );
+
+  /*
+    Si el OCR ha encontrado partidas, incorporarlas.
+  */
+
+  state.rows.push(...extracted);
+
+  progress(
+    95,
+    "Validando pesos y bultos..."
+  );
+
+}
+
+
+/* ============================================================
+   OCR NUMÉRICO
+============================================================ */
+
+async function runNumericOCR(canvas){
+
+  await state.worker.setParameters({
+
+    tessedit_char_whitelist:
+      "0123456789.,KGkg",
+
+    tessedit_pageseg_mode:
+      Tesseract.PSM.SINGLE_BLOCK,
+
+    preserve_interword_spaces:"1"
+
+  });
+
+  const result =
+    await state.worker.recognize(canvas);
+
+  const text =
+    result.data.text || "";
+
+  /*
+    Se aprovecha el OCR numérico para reparar
+    los pesos existentes cuando sea posible.
+  */
+
+  const numbers =
+    extractWeightCandidates(text);
+
+  if(numbers.length){
+
+    const weightValues =
+      numbers
+        .map(x=>parseCustomFloat(x))
+        .filter(Number.isFinite)
+        .filter(x=>x>=0);
+
+    /*
+      Solo sustituimos pesos cuando el número de
+      candidatos permite una asociación razonable.
+    */
+
+    for(
+      let i=0;
+      i<Math.min(
+        weightValues.length,
+        state.rows.length
+      );
+      i++
+    ){
+
+      state.rows[i].netWeight =
+        weightValues[i];
+
+      state.rows[i].source =
+        "OCR numérico";
+
+    }
+
+  }
+
+  renderTable();
+
+  log(
+    `OCR numérico: ${numbers.length} candidatos.`
+  );
+
+}
+
+
+/* ============================================================
+   PARSER DE OCR
+============================================================ */
+
+function parseOCRWords(words,text,pageNumber){
+
+  /*
+    Agrupa palabras por línea mediante coordenada Y.
+    Esto es mucho más fiable que intentar interpretar
+    únicamente el texto plano de Tesseract.
+  */
+
+  const lines =
+    groupWordsIntoLines(words);
+
+  const result = [];
+
+  for(const line of lines){
+
+    const raw =
+      line.words
+        .map(w=>w.text)
+        .join(" ")
+        .trim();
+
+    if(!raw) continue;
+
+    /*
+      Partida arancelaria habitual:
+      8 dígitos o 10 dígitos.
+    */
+
+    const tariffMatch =
+      raw.match(
+        /\b\d{4}(?:[\s.]?\d{2}){1,3}\b/
+      );
+
+    /*
+      Normalizamos espacios/puntos del código.
+    */
+
+    const tariff =
+      tariffMatch
+        ? normalizeTariff(tariffMatch[0])
+        : "";
+
+    /*
+      Buscar pesos.
+      Se priorizan números cercanos a KG.
+    */
+
+    const weightCandidates =
+      findWeightCandidatesInLine(raw);
+
+    let netWeight = null;
+
+    if(weightCandidates.length){
+
+      netWeight =
+        chooseBestWeight(weightCandidates);
+
+    }
+
+    /*
+      Bultos.
+    */
+
+    const packages =
+      findPackageCandidates(raw);
+
+    /*
+      Descripción:
+      eliminamos partida, peso y etiquetas frecuentes.
+    */
+
+    let description =
+      cleanDescription(raw,tariff);
+
+    /*
+      Evitamos crear filas con simple ruido.
+    */
+
+    if(
+      !tariff &&
+      netWeight === null &&
+      packages === null
+    ){
+      continue;
+    }
+
+    /*
+      Si hay partida pero no peso, seguimos creando
+      la fila para permitir corrección manual.
+    */
+
+    result.push({
+
+      tariff:tariff,
+
+      description:
+        description || "—",
+
+      netWeight:
+        netWeight,
+
+      packages:
+        packages,
+
+      confidence:
+        calculateLineConfidence(line),
+
+      sourcePage:pageNumber,
+
+      source:"OCR",
+
+      ambiguous:
+        detectAmbiguity(
+          raw,
+          netWeight
+        )
+
+    });
+
+  }
+
+  /*
+    Fusionamos filas fragmentadas cuando
+    tienen la misma partida.
+  */
+
+  return mergeLogicalRows(result);
+
+}
+
+
+/* ============================================================
+   AGRUPACIÓN POR LÍNEAS MEDIANTE BBOX
+============================================================ */
+
+function groupWordsIntoLines(words){
+
+  const usable =
+    words
+      .filter(w=>
+        w.text &&
+        w.text.trim()
+      )
+      .sort((a,b)=>
+        (a.bbox?.y0 || 0) -
+        (b.bbox?.y0 || 0)
+      );
+
+  const lines = [];
+
+  /*
+    Tolerancia dinámica para escaneos de distinta resolución.
+  */
+
+  for(const word of usable){
+
+    const y =
+      word.bbox?.y0 || 0;
+
+    const height =
+      Math.max(
+        1,
+        (word.bbox?.y1 || y+10)-y
+      );
+
+    const tolerance =
+      Math.max(8,height*0.65);
+
+    let target = null;
+
+    for(let i=lines.length-1;i>=0;i--){
+
+      const line = lines[i];
+
+      if(
+        Math.abs(
+          y-line.avgY
+        ) <= tolerance
+      ){
+
+        target=line;
+        break;
+      }
+
+      if(
+        y-line.avgY > tolerance*2
+      ){
+        break;
+      }
+
+    }
+
+    if(!target){
+
+      target={
+        words:[],
+        avgY:y
+      };
+
+      lines.push(target);
+
+    }
+
+    target.words.push(word);
+
+    target.avgY =
+      target.words.reduce(
+        (s,w)=>
+          s+(w.bbox?.y0||0),
+        0
+      ) /
+      target.words.length;
+
+  }
+
+  /*
+    Orden horizontal.
+  */
+
+  for(const line of lines){
+
+    line.words.sort(
+      (a,b)=>
+        (a.bbox?.x0||0) -
+        (b.bbox?.x0||0)
+    );
+
+  }
+
+  return lines;
+}
+
+
+/* ============================================================
+   PARTIDA ARANCELARIA
+============================================================ */
+
+function normalizeTariff(value){
+
+  return String(value)
+    .replace(/\D/g,"")
+    .slice(0,10);
+}
+
+
+/* ============================================================
+   PARSER NUMÉRICO CRÍTICO
+============================================================ */
+
+function parseCustomFloat(str){
+
+  if(
+    str === null ||
+    str === undefined
+  ){
+    return null;
+  }
+
+  let s =
+    String(str)
+      .trim()
+      .replace(/\s+/g,"")
+      .replace(/[^\d.,-]/g,"");
+
+  if(!s) return null;
+
+  /*
+    No permitimos más de un signo negativo
+    ni negativos para pesos.
+  */
+
+  if((s.match(/-/g)||[]).length > 1){
+    return null;
+  }
+
+  if(s.includes("-")){
+    return null;
+  }
+
+  /*
+    Caso europeo con ambos separadores:
+       9.000,50 -> 9000.50
+       12.500.000,25 -> 12500000.25
+  */
+
+  if(
+    s.includes(".") &&
+    s.includes(",")
+  ){
+
+    s =
+      s.replace(/\./g,"")
+       .replace(",", ".");
+
+  }else if(s.includes(",")){
+
+    /*
+      Una coma:
+      9000,50 -> 9000.50
+
+      Varias comas:
+      se considera que las anteriores son miles.
+    */
+
+    const commas =
+      (s.match(/,/g)||[]).length;
+
+    if(commas===1){
+
+      const parts =
+        s.split(",");
+
+      if(
+        parts[1] &&
+        parts[1].length <= 2
+      ){
+
+        s =
+          parts[0].replace(/\./g,"")
+          +"."+parts[1];
+
+      }else{
+
+        /*
+          9,000 => 9000
+        */
+
+        s =
+          parts.join("");
+      }
+
+    }else{
+
+      const parts =
+        s.split(",");
+
+      const last =
+        parts.pop();
+
+      if(
+        last.length===1 ||
+        last.length===2
+      ){
+
+        s =
+          parts.join("")+
+          "."+
+          last;
+
+      }else{
+
+        s =
+          parts.join("")+
+          last;
+
+      }
+
+    }
+
+  }else if(s.includes(".")){
+
+    /*
+      CRÍTICO:
+
+      9.000 -> 9000
+      12.500 -> 12500
+
+      Un punto seguido exactamente de 3 dígitos
+      sin coma se interpreta como separador de miles.
+
+      9.5 -> 9.5
+      9.50 -> 9.50
+    */
+
+    const parts =
+      s.split(".");
+
+    if(parts.length===2){
+
+      const decimalPart =
+        parts[1];
+
+      if(decimalPart.length===3){
+
+        s =
+          parts[0]+
+          decimalPart;
+
+      }
+
+      /*
+        Si tiene 1, 2 o >3 decimales,
+        se considera decimal.
+      */
+
+    }else{
+
+      /*
+        1.234.567
+        todos los puntos son miles.
+      */
+
+      const last =
+        parts[parts.length-1];
+
+      if(last.length===3){
+
+        s =
+          parts.join("");
+
+      }else{
+
+        /*
+          Caso raro: dejamos el último como decimal.
+        */
+
+        s =
+          parts
+            .slice(0,-1)
+            .join("")+
+          "."+
+          last;
+
+      }
+
+    }
+
+  }
+
+  const value =
+    Number.parseFloat(s);
+
+  if(!Number.isFinite(value)){
+    return null;
+  }
+
+  /*
+    Evita artefactos OCR absurdos.
+    El máximo real se controla además mediante
+    la validación configurable.
+  */
+
+  if(value < 0){
+    return null;
+  }
+
+  if(value > 1000000000){
+    return null;
+  }
+
+  return value;
+}
+
+
+/* ============================================================
+   CANDIDATOS DE PESO
+============================================================ */
+
+function extractWeightCandidates(text){
+
+  const matches =
+    String(text)
+      .match(
+        /\b\d[\d.,]*\s*(?:KG|Kg|kg)?\b/g
+      ) || [];
+
+  return matches;
+}
+
+
+function findWeightCandidatesInLine(text){
+
+  const candidates=[];
+
+  /*
+    Primero buscar expresiones explícitas con KG.
+  */
+
+  const kgRegex =
+    /(\d[\d.,]*)\s*(?:KGS?|KG|KILOS?)\b/gi;
+
+  let match;
+
+  while((match=kgRegex.exec(text))!==null){
+
+    const value =
+      parseCustomFloat(match[1]);
+
+    if(value !== null){
+
+      candidates.push({
+        value,
+        explicitUnit:true,
+        raw:match[0]
+      });
+
+    }
+
+  }
+
+  /*
+    Si no aparece KG, buscar números razonables.
+    No se incluyen códigos de partida de 8-10 dígitos.
+  */
+
+  if(!candidates.length){
+
+    const nums =
+      text.match(
+        /\b\d[\d.,]*\b/g
+      ) || [];
+
+    for(const raw of nums){
+
+      const digits =
+        raw.replace(/\D/g,"");
+
+      if(
+        digits.length>=8 &&
+        digits.length<=10
+      ){
+        continue;
+      }
+
+      const value =
+        parseCustomFloat(raw);
+
+      if(
+        value !== null &&
+        value > 0
+      ){
+
+        candidates.push({
+          value,
+          explicitUnit:false,
+          raw
+        });
+
+      }
+
+    }
+
+  }
+
+  return candidates;
+}
+
+
+function chooseBestWeight(candidates){
+
+  /*
+    Preferencia absoluta a números acompañados por KG.
+  */
+
+  const explicit =
+    candidates.filter(
+      c=>c.explicitUnit
+    );
+
+  const pool =
+    explicit.length
+      ? explicit
+      : candidates;
+
+  /*
+    Si hay varias posibilidades, normalmente el peso neto
+    está entre 0.01 y 100000 kg.
+  */
+
+  const valid =
+    pool.filter(
+      c=>
+        c.value>=0.001 &&
+        c.value<=100000
+    );
+
+  if(!valid.length){
+    return null;
+  }
+
+  /*
+    Para una línea de mercancía, el primer candidato explícito
+    suele ser el peso neto.
+  */
+
+  return valid[0].value;
+}
+
+
+/* ============================================================
+   BULTOS
+============================================================ */
+
+function findPackageCandidates(text){
+
+  const patterns = [
+
+    /\b(\d+)\s*(?:PKGS?|PACKAGES?|CTNS?|CARTONS?|BOXES?|BOX|BULTOS?)\b/i,
+
+    /\b(?:PKGS?|PACKAGES?|CTNS?|CARTONS?|BOXES?|BOX|BULTOS?)\s*[:\-]?\s*(\d+)\b/i,
+
+    /\b(\d+)\s*(?:PALLETS?|PALETS?|PAL)\b/i
+
+  ];
+
+  for(const pattern of patterns){
+
+    const match =
+      text.match(pattern);
+
+    if(match){
+
+      const value =
+        Number.parseInt(
+          match[1] || match[2],
+          10
+        );
+
+      if(
+        Number.isInteger(value) &&
+        value>=0 &&
+        value<=100000
+      ){
+        return value;
+      }
+
+    }
+
+  }
+
+  return null;
+}
+
+
+/* ============================================================
+   DESCRIPCIÓN
+============================================================ */
+
+function cleanDescription(text,tariff){
+
+  let s =
+    text;
+
+  if(tariff){
+
+    const variants = [
+
+      tariff,
+
+      tariff.slice(0,4)+" "+
+      tariff.slice(4),
+
+      tariff.slice(0,4)+"."+
+      tariff.slice(4,6)+"."+
+      tariff.slice(6)
+
+    ];
+
+    for(const v of variants){
+
+      s =
+        s.replace(
+          new RegExp(
+            escapeRegExp(v),
+            "g"
+          ),
+          ""
+        );
+
+    }
+
+  }
+
+  s =
+    s.replace(
+      /\b\d[\d.,]*\s*(?:KG|KGS?|KILOS?)\b/gi,
+      ""
+    );
+
+  s =
+    s.replace(
+      /\b(?:PKGS?|PACKAGES?|CTNS?|CARTONS?|BOXES?|BOX|BULTOS?|PALLETS?)\s*:?\s*\d+\b/gi,
+      ""
+    );
+
+  return s
+    .replace(/\s{2,}/g," ")
+    .replace(/^[\s:;,\-]+/,"")
+    .replace(/[\s:;,\-]+$/,"")
+    .trim();
+
+}
+
+
+/* ============================================================
+   CONFIANZA
+============================================================ */
+
+function calculateLineConfidence(line){
+
+  if(!line.words.length){
+    return 0;
+  }
+
+  const scores =
+    line.words
+      .map(w=>
+        typeof w.confidence === "number"
+          ? w.confidence
+          : typeof w.conf === "number"
+            ? w.conf
+            : 70
+      );
+
+  const avg =
+    scores.reduce(
+      (a,b)=>a+b,
+      0
+    )/scores.length;
+
+  return Math.round(
+    Math.max(0,Math.min(100,avg))
+  );
+}
+
+
+/* ============================================================
+   DETECCIÓN DE AMBIGÜEDAD
+============================================================ */
+
+function detectAmbiguity(raw,weight){
+
+  if(weight===null){
+    return true;
+  }
+
+  /*
+    Peso extremadamente pequeño o grande.
+  */
+
+  if(
+    weight < 0.001 ||
+    weight > Number($("maxWeight").value || 5000)
+  ){
+    return true;
+  }
+
+  /*
+    Muchos separadores pueden indicar OCR ambiguo.
+  */
+
+  const numberParts =
+    raw.match(
+      /\d[\d.,]*/g
+    ) || [];
+
+  for(const p of numberParts){
+
+    if(
+      (p.match(/\./g)||[]).length>=2 &&
+      (p.match(/,/g)||[]).length>=1
+    ){
+      return true;
+    }
+
+  }
+
+  return false;
+}
+
+
+/* ============================================================
+   FUSIÓN DE FILAS
+============================================================ */
+
+function mergeLogicalRows(rows){
+
+  /*
+    No fusionamos automáticamente descripciones distintas
+    aunque compartan partida: una factura puede contener
+    varias mercancías bajo el mismo código.
+
+    Solo eliminamos duplicados exactos producidos por OCR.
+  */
+
+  const output=[];
+
+  for(const row of rows){
+
+    const duplicate =
+      output.find(existing=>
+        existing.tariff &&
+        row.tariff &&
+        existing.tariff===row.tariff &&
+        existing.description===row.description &&
+        existing.netWeight===row.netWeight &&
+        existing.packages===row.packages
+      );
+
+    if(!duplicate){
+
+      output.push(row);
+
+    }
+
+  }
+
+  return output;
+}
+
+
+/* ============================================================
+   TABLA
+============================================================ */
+
+function renderTable(){
+
+  tableBody.innerHTML = "";
+
+  if(!state.rows.length){
+
+    const tr =
+      document.createElement("tr");
+
+    tr.innerHTML =
+      `<td colspan="7" class="empty-row">
+        Todavía no hay datos extraídos.
+      </td>`;
+
+    tableBody.appendChild(tr);
+
+  }else{
+
+    state.rows.forEach(
+      (row,index)=>
+        createRowElement(row,index)
+    );
+
+  }
+
+  $("rowCounter").textContent =
+    `${state.rows.length} partida${
+      state.rows.length===1 ? "" : "s"
+    }`;
+
+  updateTotals();
+
+  const hasData =
+    state.rows.length>0;
+
+  groupButton.disabled = !hasData;
+  csvButton.disabled = !hasData;
+  xlsxButton.disabled = !hasData;
+
+}
+
+
+/* ============================================================
+   CREACIÓN DE FILA
+============================================================ */
+
+function createRowElement(row,index){
+
+  const tr =
+    document.createElement("tr");
+
+  const tariffTd =
+    createEditableCell(
+      row.tariff,
+      "tariff",
+      index
+    );
+
+  const descTd =
+    createEditableCell(
+      row.description,
+      "description",
+      index
+    );
+
+  const weightTd =
+    createEditableCell(
+      row.netWeight===null
+        ? ""
+        : formatNumber(row.netWeight),
+      "netWeight",
+      index
+    );
+
+  const packageTd =
+    createEditableCell(
+      row.packages===null
+        ? ""
+        : String(row.packages),
+      "packages",
+      index
+    );
+
+  /*
+    Validación visual del peso.
+  */
+
+  if(
+    row.ambiguous ||
+    row.netWeight===null ||
+    row.netWeight >
+      Number($("maxWeight").value || 5000)
+  ){
+
+    weightTd.classList.add("error");
+
+  }
+
+  /*
+    Confianza.
+  */
+
+  const confidenceTd =
+    document.createElement("td");
+
+  confidenceTd.className =
+    "confidence";
+
+  confidenceTd.textContent =
+    `${row.confidence ?? 0}%`;
+
+  if(
+    Number(row.confidence)<65
+  ){
+
+    confidenceTd.classList.add(
+      "warning"
+    );
+
+  }
+
+  /*
+    Acciones.
+  */
+
+  const actionsTd =
+    document.createElement("td");
+
+  actionsTd.className =
+    "row-actions";
+
+  const deleteButton =
+    document.createElement("button");
+
+  deleteButton.textContent =
+    "✕";
+
+  deleteButton.title =
+    "Eliminar partida";
+
+  deleteButton.addEventListener(
+    "click",
+    ()=>{
+      state.rows.splice(index,1);
+      renderTable();
+    }
+  );
+
+  actionsTd.appendChild(deleteButton);
+
+  tr.append(
+    createIndexCell(index),
+    tariffTd,
+    descTd,
+    weightTd,
+    packageTd,
+    confidenceTd,
+    actionsTd
+  );
+
+  tableBody.appendChild(tr);
+
+}
+
+
+function createIndexCell(index){
+
+  const td =
+    document.createElement("td");
+
+  td.textContent =
+    String(index+1);
+
+  td.style.textAlign="center";
+  td.style.color="#7b8794";
+  td.style.fontWeight="700";
+
+  return td;
+}
+
+
+function createEditableCell(value,field,index){
+
+  const td =
+    document.createElement("td");
+
+  if(
+    field==="netWeight" ||
+    field==="packages"
+  ){
+
+    td.classList.add("number");
+
+  }
+
+  const input =
+    document.createElement("input");
+
+  input.value =
+    value ?? "";
+
+  input.title =
+    "Clic para editar";
+
+  input.addEventListener(
+    "change",
+    ()=>{
+
+      let newValue =
+        input.value.trim();
+
+      if(field==="netWeight"){
+
+        const parsed =
+          parseCustomFloat(newValue);
+
+        state.rows[index].netWeight =
+          parsed;
+
+        state.rows[index].ambiguous =
+          detectAmbiguity(
+            newValue,
+            parsed
+          );
+
+      }else if(field==="packages"){
+
+        const parsed =
+          Number.parseInt(
+            newValue.replace(/\D/g,""),
+            10
+          );
+
+        state.rows[index].packages =
+          Number.isFinite(parsed)
+            ? parsed
+            : null;
+
+      }else{
+
+        state.rows[index][field] =
+          newValue;
+
+      }
+
+      renderTable();
+
+    }
+  );
+
+  td.appendChild(input);
+
+  return td;
+}
+
+
+/* ============================================================
+   TOTALES
+============================================================ */
+
+function updateTotals(){
+
+  let totalWeight=0;
+  let totalPackages=0;
+
+  let errors=0;
+
+  for(const row of state.rows){
+
+    if(
+      Number.isFinite(row.netWeight)
+    ){
+
+      totalWeight +=
+        row.netWeight;
+
+    }
+
+    if(
+      Number.isFinite(row.packages)
+    ){
+
+      totalPackages +=
+        row.packages;
+
+    }
+
+    if(
+      row.ambiguous ||
+      row.netWeight===null ||
+      (
+        Number.isFinite(row.netWeight) &&
+        row.netWeight >
+        Number($("maxWeight").value || 5000)
+      )
+    ){
+
+      errors++;
+
+    }
+
+  }
+
+  $("totalWeight").textContent =
+    `${formatNumber(totalWeight)} KG`;
+
+  $("totalPackages").textContent =
+    String(totalPackages);
+
+  $("footerWeight").textContent =
+    `${formatNumber(totalWeight)} KG`;
+
+  $("footerPackages").textContent =
+    String(totalPackages);
+
+  const status =
+    $("validationStatus");
+
+  if(errors){
+
+    status.textContent =
+      `${errors} REVISAR`;
+
+    status.className =
+      "metric-value bad";
+
+  }else{
+
+    status.textContent =
+      "OK";
+
+    status.className =
+      "metric-value good";
+
+  }
+
+}
+
+
+/* ============================================================
+   AGRUPACIÓN POR PARTIDA
+============================================================ */
+
+groupButton.addEventListener(
+  "click",
+  groupByTariff
+);
+
+
+function groupByTariff(){
+
+  if(!state.rows.length){
+    return;
+  }
+
+  const groups =
+    new Map();
+
+  for(const row of state.rows){
+
+    const tariff =
+      row.tariff.trim();
+
+    /*
+      Sin partida no se agrupa con otras.
+    */
+
+    const key =
+      tariff || `SIN_PARTIDA_${Math.random()}`;
+
+    if(!groups.has(key)){
+
+      groups.set(key,{
+
+        tariff:tariff,
+
+        description:
+          row.description || "",
+
+        netWeight:0,
+
+        packages:0,
+
+        confidence:
+          row.confidence ?? 0,
+
+        ambiguous:false,
+
+        source:"Agrupado"
+
+      });
+
+    }
+
+    const group =
+      groups.get(key);
+
+    if(
+      Number.isFinite(row.netWeight)
+    ){
+
+      group.netWeight +=
+        row.netWeight;
+
+    }else{
+
+      group.ambiguous=true;
+
+    }
+
+    if(
+      Number.isFinite(row.packages)
+    ){
+
+      group.packages +=
+        row.packages;
+
+    }
+
+    /*
+      Conservamos una descripción combinada
+      si las mercancías son distintas.
+    */
+
+    if(
+      row.description &&
+      row.description !== group.description &&
+      !group.description.includes(row.description)
+    ){
+
+      group.description +=
+        " / "+row.description;
+
+    }
+
+    group.confidence =
+      Math.min(
+        group.confidence,
+        row.confidence ?? 0
+      );
+
+  }
+
+  state.rows =
+    Array.from(groups.values());
+
+  renderTable();
+
+  log(
+    `Agrupación completada: ${state.rows.length} partidas.`
+  );
+
+}
+
+
+/* ============================================================
+   AÑADIR FILA
+============================================================ */
+
+addButton.addEventListener(
+  "click",
+  ()=>{
+
+    state.rows.push({
+
+      tariff:"",
+
+      description:"",
+
+      netWeight:null,
+
+      packages:null,
+
+      confidence:100,
+
+      ambiguous:true,
+
+      source:"Manual"
+
+    });
+
+    renderTable();
+
+    /*
+      Hace scroll al final.
+    */
+
+    setTimeout(()=>{
+
+      const wrap =
+        document.querySelector(".table-wrap");
+
+      wrap.scrollTop =
+        wrap.scrollHeight;
+
+    },50);
+
+  }
+);
+
+
+/* ============================================================
+   EXPORTACIÓN CSV
+============================================================ */
+
+csvButton.addEventListener(
+  "click",
+  exportCSV
+);
+
+
+function exportCSV(){
+
+  const rows =
+    getExportRows();
+
+  const headers = [
+    "Partida arancelaria",
+    "Descripción",
+    "Peso neto KG",
+    "Bultos",
+    "Confianza OCR"
+  ];
+
+  const csvRows = [
+    headers,
+    ...rows
+  ];
+
+  /*
+    Excel en español suele interpretar UTF-8
+    correctamente con BOM.
+  */
+
+  const csv =
+    "\uFEFF"+
+    csvRows
+      .map(row=>
+        row
+          .map(csvEscape)
+          .join(";")
+      )
+      .join("\r\n");
+
+  downloadBlob(
+    new Blob(
+      [csv],
+      {type:"text/csv;charset=utf-8"}
+    ),
+    "desglose_aduanas.csv"
+  );
+
+  log("CSV exportado.");
+
+}
+
+
+/* ============================================================
+   EXPORTACIÓN XLSX
+============================================================ */
+
+xlsxButton.addEventListener(
+  "click",
+  exportXLSX
+);
+
+
+function exportXLSX(){
+
+  if(!window.XLSX){
+
+    alert(
+      "SheetJS todavía no está disponible."
+    );
+
+    return;
+  }
+
+  const data = [
+
+    [
+      "Partida arancelaria",
+      "Descripción",
+      "Peso neto KG",
+      "Bultos",
+      "Confianza OCR"
+    ],
+
+    ...getExportRows()
+
+  ];
+
+  const worksheet =
+    XLSX.utils.aoa_to_sheet(data);
+
+  /*
+    Anchos profesionales.
+  */
+
+  worksheet["!cols"] = [
+    {wch:22},
+    {wch:55},
+    {wch:16},
+    {wch:12},
+    {wch:16}
+  ];
+
+  /*
+    Fila de totales.
+  */
+
+  const totalRow =
+    data.length+2;
+
+  XLSX.utils.sheet_add_aoa(
+    worksheet,
+    [
+      [
+        "TOTAL",
+        "",
+        calculateTotalWeight(),
+        calculateTotalPackages(),
+        ""
+      ]
+    ],
+    {
+      origin:`A${totalRow}`
+    }
+  );
+
+  const workbook =
+    XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    worksheet,
+    "Desglose Aduanas"
+  );
+
+  XLSX.writeFile(
+    workbook,
+    "desglose_aduanas.xlsx"
+  );
+
+  log("Excel XLSX exportado.");
+
+}
+
+
+function getExportRows(){
+
+  return state.rows.map(row=>[
+
+    row.tariff || "",
+
+    row.description || "",
+
+    Number.isFinite(row.netWeight)
+      ? row.netWeight
+      : "",
+
+    Number.isFinite(row.packages)
+      ? row.packages
+      : "",
+
+    Number.isFinite(row.confidence)
+      ? row.confidence+"%"
+      : ""
+
+  ]);
+
+}
+
+
+/* ============================================================
+   LIMPIAR
+============================================================ */
+
+clearButton.addEventListener(
+  "click",
+  ()=>{
+
+    state.rows=[];
+    state.words=[];
+    state.file=null;
+    state.image=null;
+    state.pdf=null;
+
+    fileInput.value="";
+
+    $("placeholder").style.display =
+      "block";
+
+    $("documentContainer").style.display =
+      "none";
+
+    $("documentInfo").textContent =
+      "Sin documento";
+
+    renderTable();
+
+    log("Sesión limpiada.");
+
+  }
+);
+
+
+/* ============================================================
+   UTILIDADES
+============================================================ */
+
+function calculateTotalWeight(){
+
+  return state.rows.reduce(
+    (sum,row)=>
+      sum+
+      (
+        Number.isFinite(row.netWeight)
+          ? row.netWeight
+          : 0
+      ),
+    0
+  );
+
+}
+
+
+function calculateTotalPackages(){
+
+  return state.rows.reduce(
+    (sum,row)=>
+      sum+
+      (
+        Number.isFinite(row.packages)
+          ? row.packages
+          : 0
+      ),
+    0
+  );
+
+}
+
+
+function formatNumber(value){
+
+  if(!Number.isFinite(value)){
+    return "0,00";
+  }
+
+  return new Intl.NumberFormat(
+    "es-ES",
+    {
+      minimumFractionDigits:2,
+      maximumFractionDigits:3
+    }
+  ).format(value);
+
+}
+
+
+function formatBytes(bytes){
+
+  if(bytes<1024){
+    return bytes+" B";
+  }
+
+  if(bytes<1024*1024){
+    return (bytes/1024).toFixed(1)+" KB";
+  }
+
+  return (
+    bytes/(1024*1024)
+  ).toFixed(1)+" MB";
+
+}
+
+
+function clamp(value,min,max){
+
+  const n =
+    Number(value);
+
+  if(!Number.isFinite(n)){
+    return min;
+  }
+
+  return Math.max(
+    min,
+    Math.min(max,n)
+  );
+
+}
+
+
+function escapeRegExp(str){
+
+  return String(str)
+    .replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+
+}
+
+
+function csvEscape(value){
+
+  const s =
+    String(value ?? "");
+
+  if(
+    s.includes(";") ||
+    s.includes('"') ||
+    s.includes("\n")
+  ){
+
+    return '"'+
+      s.replace(/"/g,'""')+
+      '"';
+
+  }
+
+  return s;
+
+}
+
+
+function downloadBlob(blob,filename){
+
+  const url =
+    URL.createObjectURL(blob);
+
+  const a =
+    document.createElement("a");
+
+  a.href=url;
+  a.download=filename;
+
+  document.body.appendChild(a);
+
+  a.click();
+
+  a.remove();
+
+  setTimeout(
+    ()=>URL.revokeObjectURL(url),
+    1000
+  );
+
+}
+
+
+/* ============================================================
+   VALIDACIÓN DINÁMICA DEL UMBRAL
+============================================================ */
+
+$("maxWeight").addEventListener(
+  "input",
+  ()=>{
+    renderTable();
+  }
+);
+
+
+/* ============================================================
+   PDF: CONTROLES DE PÁGINA
+============================================================ */
+
+document.addEventListener(
+  "keydown",
+  async e=>{
+
+    if(
+      state.fileType!=="pdf" ||
+      !state.pdf ||
+      state.busy
+    ){
+      return;
+    }
+
+    if(e.key==="ArrowRight"){
+
+      if(
+        state.pdfPage <
+        state.pdfPages
+      ){
+
+        state.pdfPage++;
+
+        await renderPDFPage(
+          state.pdfPage
+        );
+
+      }
+
+    }
+
+    if(e.key==="ArrowLeft"){
+
+      if(state.pdfPage>1){
+
+        state.pdfPage--;
+
+        await renderPDFPage(
+          state.pdfPage
+        );
+
+      }
+
+    }
+
+  }
+);
+
+
+/* ============================================================
+   DETECCIÓN DE PESOS ANÓMALOS EN TEXTO
+============================================================ */
+
+function validateWeightValue(value){
+
+  if(value===null){
+    return {
+      valid:false,
+      reason:"Sin peso"
+    };
+  }
+
+  if(!Number.isFinite(value)){
+    return {
+      valid:false,
+      reason:"No numérico"
+    };
+  }
+
+  if(value<0.001){
+
+    return {
+      valid:false,
+      reason:"Peso demasiado pequeño"
+    };
+
+  }
+
+  const max =
+    Number(
+      $("maxWeight").value || 5000
+    );
+
+  if(value>max){
+
+    return {
+      valid:false,
+      reason:"Peso sospechosamente alto"
+    };
+
+  }
+
+  return {
+    valid:true,
+    reason:"OK"
+  };
+
+}
+
+
+/* ============================================================
+   DETECTOR ADICIONAL DE CÓDIGOS ARANCELARIOS
+============================================================ */
+
+function extractTariffsFromText(text){
+
+  const matches =
+    String(text).match(
+      /\b\d{4}[\s.]?\d{2}[\s.]?\d{2,4}\b/g
+    ) || [];
+
+  return [
+    ...new Set(
+      matches.map(normalizeTariff)
+    )
+  ];
+
+}
+
+
+/* ============================================================
+   RECUPERACIÓN DE PESOS CON CONTEXTO
+============================================================ */
+
+function extractContextualWeights(text){
+
+  /*
+    Detecta expresiones del tipo:
+
+      NET WEIGHT 9.000,50 KG
+      N.W. 125,5 KG
+      NET 12.500 KG
+      WEIGHT: 9000 KG
+  */
+
+  const regex =
+    /(?:NET(?:\s+WEIGHT)?|N\.?\s*W\.?|NETTO|PESO\s+NETO|NET\s+KG?)\s*[:\-]?\s*(\d[\d.,]*)\s*(?:KG|KGS?)?/gi;
+
+  const output=[];
+
+  let match;
+
+  while((match=regex.exec(text))!==null){
+
+    const value =
+      parseCustomFloat(match[1]);
+
+    if(value!==null){
+
+      output.push(value);
+
+    }
+
+  }
+
+  return output;
+
+}
+
+
+/* ============================================================
+   ASOCIACIÓN DE BULTOS CON PARTIDAS
+============================================================ */
+
+function associatePackagesNearWeight(
+  lineText
+){
+
+  const packagePatterns = [
+
+    /(\d+)\s*(?:PKGS?|CTNS?|BOX(?:ES)?|CARTONS?|BULTOS?)/i,
+
+    /(?:PKGS?|CTNS?|BOX(?:ES)?|CARTONS?|BULTOS?)\s*[:\-]?\s*(\d+)/i
+
+  ];
+
+  for(const pattern of packagePatterns){
+
+    const match =
+      lineText.match(pattern);
+
+    if(match){
+
+      const n =
+        Number.parseInt(
+          match[1],
+          10
+        );
+
+      if(
+        Number.isInteger(n) &&
+        n>=0 &&
+        n<=100000
+      ){
+
+        return n;
+
+      }
+
+    }
+
+  }
+
+  return null;
+
+}
+
+
+/* ============================================================
+   PRE-CALIBRACIÓN DEL OCR
+============================================================ */
+
+async function calibrateOCR(){
+
+  if(!state.workerReady){
+    await initOCR();
+  }
+
+  await state.worker.setParameters({
+
+    tessedit_char_whitelist:
+      "0123456789.,KGkg",
+
+    user_defined_dpi:"300",
+
+    preserve_interword_spaces:"1",
+
+    classify_bln_numeric_mode:"1"
+
+  });
+
+}
+
+
+/* ============================================================
+   INICIALIZACIÓN
+============================================================ */
+
+window.addEventListener(
+  "load",
+  async ()=>{
+
+    log("Aplicación iniciada.");
+
+    /*
+      Inicializamos Tesseract en segundo plano para que
+      el primer OCR no tenga que pagar el coste de carga.
+    */
+
+    try{
+
+      await initOCR();
+
+    }catch(e){
+
+      console.warn(e);
+
+    }
+
+  }
+);
+
+</script>
+
+</body>
+</html>
